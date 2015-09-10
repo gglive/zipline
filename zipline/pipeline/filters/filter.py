@@ -15,7 +15,7 @@ from zipline.errors import (
 )
 from zipline.pipeline.term import (
     SingleInputMixin,
-    Term,
+    CompositeTerm,
 )
 from zipline.pipeline.expression import (
     BadBinaryOperator,
@@ -81,7 +81,7 @@ def binary_operator(op):
     return binary_operator
 
 
-class Filter(Term):
+class Filter(CompositeTerm):
     """
     A boolean predicate on a universe of Assets.
     """
