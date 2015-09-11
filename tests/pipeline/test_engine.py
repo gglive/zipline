@@ -115,7 +115,8 @@ class ConstantInputTestCase(TestCase):
 
     def test_bad_dates(self):
         loader = self.loader
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
 
         p = Pipeline('test')
 
@@ -129,7 +130,8 @@ class ConstantInputTestCase(TestCase):
         loader = self.loader
         finder = self.asset_finder
         assets = array(self.assets)
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
         num_dates = 5
         dates = self.dates[10:10 + num_dates]
 
@@ -152,7 +154,8 @@ class ConstantInputTestCase(TestCase):
         loader = self.loader
         finder = self.asset_finder
         assets = self.assets
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
         result_shape = (num_dates, num_assets) = (5, len(assets))
         dates = self.dates[10:10 + num_dates]
 
@@ -186,7 +189,8 @@ class ConstantInputTestCase(TestCase):
         loader = self.loader
         finder = self.asset_finder
         assets = self.assets
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
         shape = num_dates, num_assets = (5, len(assets))
         dates = self.dates[10:10 + num_dates]
 
@@ -230,7 +234,8 @@ class ConstantInputTestCase(TestCase):
     def test_numeric_factor(self):
         constants = self.constants
         loader = self.loader
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
         num_dates = 5
         dates = self.dates[10:10 + num_dates]
         high, low = USEquityPricing.high, USEquityPricing.low
@@ -358,7 +363,8 @@ class FrameInputTestCase(TestCase):
         high_loader = DataFrameLoader(high, high_base, adjustments)
         loader = MultiColumnLoader({low: low_loader, high: high_loader})
 
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
 
         for window_length in range(1, 4):
             low_mavg = SimpleMovingAverage(
@@ -469,7 +475,7 @@ class SyntheticBcolzTestCase(TestCase):
 
     def test_SMA(self):
         engine = SimplePipelineEngine(
-            self.pipeline_loader,
+            lambda column: self.pipeline_loader,
             self.env.trading_days,
             self.finder,
         )
@@ -521,7 +527,7 @@ class SyntheticBcolzTestCase(TestCase):
         # or zero, but verifying we correctly handle those corner cases is
         # valuable.
         engine = SimplePipelineEngine(
-            self.pipeline_loader,
+            lambda column: self.pipeline_loader,
             self.env.trading_days,
             self.finder,
         )
@@ -588,7 +594,8 @@ class MultiColumnLoaderTestCase(TestCase):
             dates=self.dates,
             assets=self.assets,
         )
-        engine = SimplePipelineEngine(loader, self.dates, self.asset_finder)
+        engine = SimplePipelineEngine(lambda column: loader,
+                                      self.dates, self.asset_finder)
 
         sumdiff = RollingSumDifference()
 
