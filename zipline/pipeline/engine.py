@@ -319,9 +319,9 @@ class SimplePipelineEngine(object):
                 # FUTURE OPTIMIZATION: Scan the resolution order for terms in
                 # the same dataset and load them here as well.
                 to_load = [term]
-                loaded = loader.load_adjusted_array(
+                loaded = tuple(loader.load_adjusted_array(
                     to_load, mask_dates, assets, mask,
-                )
+                ))
                 assert len(to_load) == len(loaded)
                 for loaded_term, adj_array in zip_longest(to_load, loaded):
                     workspace[loaded_term] = adj_array
