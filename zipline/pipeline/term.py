@@ -170,12 +170,16 @@ class Term(object):
             raise WindowLengthNotSpecified(termname=type(self).__name__)
         if self.dtype is NotSpecified:
             raise DTypeNotSpecified(termname=type(self).__name__)
-        if self.mask is NotSpecified and not self.atomic:
-            # This isn't user error, this is a bug in our code.
-            raise AssertionError("{term} has no mask".format(term=self))
 
+        # This isn't user error, this is a bug in our code.
+        assert not (self.mask is NotSpecified and not self.atomic), (
+            "{term} has no mask".format(term=self)
+        )
         if self.window_length:
             for child in self.inputs:
+                assert isinstance(child, Term), (
+                    'input %r to %r is not a Term' % (child, self)
+                )
                 if not child.atomic:
                     raise InputTermNotAtomic(parent=self, child=child)
 
