@@ -109,6 +109,9 @@ class DataSetMeta(type):
     def columns(self):
         return self._columns
 
+    def __repr__(self):
+        return '<DataSet: %r>' % self.__name__
+
 
 class DataSet(with_metaclass(DataSetMeta)):
     domain = None
