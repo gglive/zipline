@@ -18,6 +18,8 @@ from os.path import exists
 
 import sqlite3
 
+import bcolz
+import pandas as pd
 from numpy import (
     floating,
     integer,
@@ -34,6 +36,13 @@ SQLITE_ADJUSTMENT_COLUMN_DTYPES = {
     'sid': integer,
 }
 SQLITE_ADJUSTMENT_TABLENAMES = frozenset(['splits', 'dividends', 'mergers'])
+
+
+SQLITE_DIVIDEND_PAYOUT_COLUMN_DTYPES = {
+    'ex_date': integer,
+    'declared_date': integer,
+
+}
 
 
 class SQLiteAdjustmentWriter(object):
@@ -99,6 +108,96 @@ class SQLiteAdjustmentWriter(object):
                 )
         return frame.to_sql(tablename, self.conn)
 
+    def calc_dividend_ratios(self, dividends):
+
+        daily_bar_table = bcolz.ctable(
+            rootdir=self.daily_bar_table,
+            mode='r')
+        trading_days = pd.DatetimeIndex(
+            daily_bar_table.attrs['calendar'], tz='UTC'
+        )
+
+        # Remove rows with no gross_amount
+        dividends_df = dividends_df[pd.notnull(dividends_df.gross_amount)]
+
+        dividends_df['ex_date_dt'] = pd.to_datetime(
+            dividends_df['ex_date_nano'], utc=True)
+
+        # strftime("%s") not working here for some reason
+        epoch = pd.Timestamp(0, tz='UTC')
+
+        closes = daily_bar_table['close'][:]
+        sids = daily_bar_table['id'][:]
+
+        ratios = np.zeros(len(dividends_df))
+        effective_dates = np.zeros(len(dividends_df), dtype=np.uint32)
+
+        first_row = {int(k): v for k, v
+                     in daily_bar_table.attrs['first_row'].iteritems()}
+        calendar_offset = {
+            int(k): v for k, v
+            in daily_bar_table.attrs['calendar_offset'].iteritems()}
+
+        del dividends_df['declared_date_nano']
+        del dividends_df['pay_date_nano']
+        del dividends_df['net_amount']
+        del dividends_df['ex_date_nano']
+
+        dividends_df = dividends_df.reset_index(drop=True)
+        for i, row in dividends_df.iterrows():
+            sid = row['sid']
+            day_loc = trading_days.searchsorted(row['ex_date_dt'])
+            # Find the first non-empty close for the asset **before** the ex date.
+            found_close = False
+            while True:
+                # Always go back at least one day.
+                day_loc -= 1
+                ix = first_row[sid] + day_loc - calendar_offset[sid]
+                prev_close = closes[ix]
+                if sids[ix] != sid:
+                    break
+                elif prev_close != 0:
+                    found_close = True
+                    break
+
+            if found_close:
+                ratios[i] = 1.0 - row['gross_amount'] / (prev_close * 0.001)
+                prev_day = trading_days[day_loc]
+                prev_day_s = int((prev_day - epoch).total_seconds())
+                effective_dates[i] = prev_day_s
+            else:
+                # All 0 zero data before ex_date
+                # This occurs with at least sid 25157
+                logger.warn("Couldn't compute ratio for dividend %s" % dict(row))
+                continue
+
+        dividends_df['ratio'] = ratios
+        dividends_df['effective_date'] = effective_dates
+        output_df = dividends_df[dividends_df.effective_date != 0]
+        del output_df['gross_amount']
+        del output_df['ex_date_dt']
+
+        ratios_path = paths.build.adjustments.dividend_ratios
+        if os.path.exists(ratios_path):
+            # bcolz checks for path existence before writing.
+            os.remove(ratios_path)
+        s_table = bcolz.ctable.fromdataframe(output_df)
+        s_table.tohdf5(ratios_path, '/dividend_ratios')
+
+        daily_bar_table = bcolz.ctable(rootdir=self.daily_bars_path)
+
+    def write_dividend_data(self, dividends):
+
+        # First write the dividend payouts.
+
+
+        # Second from the dividend payouts, calculate ratios.
+
+        dividend_ratios = self.calc_dividend_ratios(dividends)
+
+
+        self.write_frame('dividends', dividend_ratios)
+
     def write(self, splits, mergers, dividends):
         """
         Writes data to a SQLite file to be read by SQLiteAdjustmentReader.
@@ -143,7 +242,7 @@ class SQLiteAdjustmentWriter(object):
         """
         self.write_frame('splits', splits)
         self.write_frame('mergers', mergers)
-        self.write_frame('dividends', dividends)
+        self.write_dividend_data(dividends)
         self.conn.execute(
             "CREATE INDEX splits_sids "
             "ON splits(sid)"
