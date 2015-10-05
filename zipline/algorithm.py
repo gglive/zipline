@@ -95,6 +95,7 @@ from zipline.utils.events import (
 )
 from zipline.utils.factory import create_simulation_parameters
 from zipline.utils.math_utils import tolerant_equals
+from zipline.utils.preprocess import preprocess
 
 import zipline.protocol
 from zipline.protocol import Event
@@ -103,6 +104,13 @@ from zipline.history import HistorySpec
 from zipline.history.history_container import HistoryContainer
 
 DEFAULT_CAPITAL_BASE = float("1.0e5")
+
+
+def _ensure_upper_case(func, argname, arg):
+    if isinstance(arg, str):
+        return arg.upper()
+    else:
+        raise TypeError
 
 
 class TradingAlgorithm(object):
@@ -738,6 +746,7 @@ class TradingAlgorithm(object):
             self._recorded_vars[name] = value
 
     @api_method
+    @preprocess(symbol_str=_ensure_upper_case)
     def symbol(self, symbol_str):
         """
         Default symbol lookup for any source that directly maps the
@@ -770,6 +779,7 @@ class TradingAlgorithm(object):
         return self.asset_finder.retrieve_asset(a_sid)
 
     @api_method
+    @preprocess(symbol=_ensure_upper_case)
     def future_symbol(self, symbol):
         """ Lookup a futures contract with a given symbol.
 
@@ -792,6 +802,7 @@ class TradingAlgorithm(object):
         return self.asset_finder.lookup_future_symbol(symbol)
 
     @api_method
+    @preprocess(root_symbol=_ensure_upper_case)
     def future_chain(self, root_symbol, as_of_date=None):
         """ Look up a future chain with the specified parameters.
 
@@ -823,7 +834,7 @@ class TradingAlgorithm(object):
         return FutureChain(
             asset_finder=self.asset_finder,
             get_datetime=self.get_datetime,
-            root_symbol=root_symbol.upper(),
+            root_symbol=root_symbol,
             as_of_date=as_of_date
         )
 
