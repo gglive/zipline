@@ -18,12 +18,13 @@ from os.path import exists
 
 import sqlite3
 
-import bcolz
 import pandas as pd
 from numpy import (
     floating,
     integer,
     issubdtype,
+    int64,
+    uint32
 )
 import logbook
 import numpy as np
@@ -114,73 +115,15 @@ class SQLiteAdjustmentWriter(object):
 
     def calc_dividend_ratios(self, dividends):
 
-        daily_bar_table = bcolz.ctable(
-            rootdir=self.daily_bar_table,
-            mode='r')
-        trading_days = pd.DatetimeIndex(
-            daily_bar_table.attrs['calendar'], tz='UTC'
-        )
-
         # Remove rows with no gross_amount
-        dividends_df = dividends[pd.notnull(dividends.gross_amount)]
+        mask = pd.notnull(dividends.gross_amount)
 
-        dividends_df['ex_date_dt'] = pd.to_datetime(
-            dividends_df['ex_date_nano'], utc=True)
+        sids = dividends.sid[mask]
+        ex_dates = dividends.ex_date[mask]
 
-        # strftime("%s") not working here for some reason
-        epoch = pd.Timestamp(0, tz='UTC')
+        ratios = np.full(len(mask), np.nan)
 
-        closes = daily_bar_table['close'][:]
-        sids = daily_bar_table['id'][:]
-
-        ratios = np.zeros(len(dividends_df))
-        effective_dates = np.zeros(len(dividends_df), dtype=np.uint32)
-
-        first_row = {int(k): v for k, v
-                     in daily_bar_table.attrs['first_row'].iteritems()}
-        calendar_offset = {
-            int(k): v for k, v
-            in daily_bar_table.attrs['calendar_offset'].iteritems()}
-
-        del dividends_df['declared_date_nano']
-        del dividends_df['pay_date_nano']
-        del dividends_df['net_amount']
-        del dividends_df['ex_date_nano']
-
-        dividends_df = dividends_df.reset_index(drop=True)
-        for i, row in dividends_df.iterrows():
-            sid = row['sid']
-            day_loc = trading_days.searchsorted(row['ex_date_dt'])
-            # Find the first non-empty close for the asset **before** the ex
-            # date.
-            found_close = False
-            while True:
-                # Always go back at least one day.
-                day_loc -= 1
-                ix = first_row[sid] + day_loc - calendar_offset[sid]
-                prev_close = closes[ix]
-                if sids[ix] != sid:
-                    break
-                elif prev_close != 0:
-                    found_close = True
-                    break
-
-            if found_close:
-                ratios[i] = 1.0 - row['gross_amount'] / (prev_close * 0.001)
-                prev_day = trading_days[day_loc]
-                prev_day_s = int((prev_day - epoch).total_seconds())
-                effective_dates[i] = prev_day_s
-            else:
-                # All 0 zero data before ex_date
-                # This occurs with at least sid 25157
-                logger.warn("Couldn't compute ratio for dividend %s" % dict(
-                    row))
-                continue
-
-        date_mask = effective_dates != 0
-        sids = sids[date_mask]
-        effective_dates = effective_dates[date_mask]
-        ratios = ratios[date_mask]
+        effective_dates = (ex_dates.astype(int64) / int(1e9)).astype(uint32)
         return pd.DataFrame({
             'sid': sids,
             'effective_date': effective_dates,

@@ -6,6 +6,7 @@ from bcolz import ctable
 from numpy import (
     arange,
     array,
+    datetime64,
     float64,
     full,
     iinfo,
@@ -246,6 +247,14 @@ class SyntheticDailyBarWriter(BcolzDailyBarWriter):
     # END SUPERCLASS INTERFACE
 
 
+class DailyBarSpotReader(object):
+    def __init__(self):
+        pass
+
+    def spot_price(self, sid, day, column):
+        return 100.0
+
+
 class NullAdjustmentReader(SQLiteAdjustmentReader):
     """
     A SQLiteAdjustmentReader that stores no adjustments and uses in-memory
@@ -254,11 +263,18 @@ class NullAdjustmentReader(SQLiteAdjustmentReader):
 
     def __init__(self):
         conn = sqlite3_connect(':memory:')
+        self.daily_bar_spot_reader = DailyBarSpotReader()
         writer = SQLiteAdjustmentWriter(conn)
         empty = DataFrame({
             'sid': array([], dtype=uint32),
             'effective_date': array([], dtype=uint32),
             'ratio': array([], dtype=float),
         })
-        writer.write(splits=empty, mergers=empty, dividends=empty)
+        empty_dividends = DataFrame({
+            'gross_amount': array([], dtype=uint32),
+            'ex_date': array([], dtype=datetime64),
+            'sid': array([], dtype=uint32),
+            'ratio': array([], dtype=float64),
+        })
+        writer.write(splits=empty, mergers=empty, dividends=empty_dividends)
         super(NullAdjustmentReader, self).__init__(conn)
