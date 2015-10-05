@@ -25,8 +25,12 @@ from numpy import (
     integer,
     issubdtype,
 )
+import logbook
+import numpy as np
 
 from six import iteritems
+
+logger = logbook.Logger('Adjustments')
 
 
 SQLITE_ADJUSTMENT_COLUMNS = frozenset(['effective_date', 'ratio', 'sid'])
@@ -118,7 +122,7 @@ class SQLiteAdjustmentWriter(object):
         )
 
         # Remove rows with no gross_amount
-        dividends_df = dividends_df[pd.notnull(dividends_df.gross_amount)]
+        dividends_df = dividends[pd.notnull(dividends.gross_amount)]
 
         dividends_df['ex_date_dt'] = pd.to_datetime(
             dividends_df['ex_date_nano'], utc=True)
@@ -147,7 +151,8 @@ class SQLiteAdjustmentWriter(object):
         for i, row in dividends_df.iterrows():
             sid = row['sid']
             day_loc = trading_days.searchsorted(row['ex_date_dt'])
-            # Find the first non-empty close for the asset **before** the ex date.
+            # Find the first non-empty close for the asset **before** the ex
+            # date.
             found_close = False
             while True:
                 # Always go back at least one day.
@@ -168,33 +173,27 @@ class SQLiteAdjustmentWriter(object):
             else:
                 # All 0 zero data before ex_date
                 # This occurs with at least sid 25157
-                logger.warn("Couldn't compute ratio for dividend %s" % dict(row))
+                logger.warn("Couldn't compute ratio for dividend %s" % dict(
+                    row))
                 continue
 
-        dividends_df['ratio'] = ratios
-        dividends_df['effective_date'] = effective_dates
-        output_df = dividends_df[dividends_df.effective_date != 0]
-        del output_df['gross_amount']
-        del output_df['ex_date_dt']
-
-        ratios_path = paths.build.adjustments.dividend_ratios
-        if os.path.exists(ratios_path):
-            # bcolz checks for path existence before writing.
-            os.remove(ratios_path)
-        s_table = bcolz.ctable.fromdataframe(output_df)
-        s_table.tohdf5(ratios_path, '/dividend_ratios')
-
-        daily_bar_table = bcolz.ctable(rootdir=self.daily_bars_path)
+        date_mask = effective_dates != 0
+        sids = sids[date_mask]
+        effective_dates = effective_dates[date_mask]
+        ratios = ratios[date_mask]
+        return pd.DataFrame({
+            'sid': sids,
+            'effective_date': effective_dates,
+            'ratio': ratios,
+        })
 
     def write_dividend_data(self, dividends):
 
         # First write the dividend payouts.
 
-
         # Second from the dividend payouts, calculate ratios.
 
         dividend_ratios = self.calc_dividend_ratios(dividends)
-
 
         self.write_frame('dividends', dividend_ratios)
 
